@@ -7,7 +7,9 @@ corefiles=$1
 DEBIANURL=`echo "$corefiles" | awk -F ',' '{ print $1}'`
 RLSMIRROR=`echo "$corefiles" | awk -F ',' '{ print $2}'`
 TARGETDDURL=`echo "$corefiles" | awk -F ',' '{ print $3}'`
-UNZIP=`echo "$corefiles" | awk -F ',' '{ print $4}'`
+OSHINT=`echo "$corefiles" | awk -F ',' '{ print $4}'`
+UNZIP=`echo "$corefiles" | awk -F ',' '{ print $5}'`
+targetoslayoutinfo=`echo "$OSHINT" | grep -q '^win*' && echo efiwin || echo genelinux` # general biosorefilinux
 
 hd=$2
 # exit 0 is important when there is more than 1 block,it may failed
@@ -54,8 +56,6 @@ GATE=`[ -n "$staticnetinfo" ] && echo "$staticnetinfo" | awk -F ',' '{ print $3}
 IPTYPE=`[ -n "$IP" ] && [ \`echo "$IP"|grep ":"\` ] && echo v6 || echo v4`
 logger -t minlearnadd preddtime IP:$IP,MASK:$MASK,GATE:$GATE,IPTYPE:$IPTYPE,ISDHCP:$ISDHCP
 
-PIPECMDSTR='wget -qO- --no-check-certificate '\"$TARGETDDURL\"' | stdbuf -oL dd of=p4/down/tmp.iso bs=10M 2>> /var/log/progress & pid=`expr $! + 0`;echo $pid'
-logger -t minlearnadd preddtime PIPECMDSTR:"$PIPECMDSTR"
 
 down(){
 
@@ -64,19 +64,82 @@ down(){
 
   echo "Installing Dependencies"
   apt-get update
-  install_packages curl efibootmgr p7zip-full squashfs-tools
+  install_packages curl efibootmgr p7zip-full squashfs-tools ntfs-3g wimtools dos2unix
   echo "Installed Dependencies"
+}
+
+dowget(){
 
   mkdir -p p4/down p4/extracted
-  for i in grub-common_2.06-3-deb11u5_arm64.deb grub-efi-arm64-bin_2.06-3-deb11u5_arm64.deb; do 
+  for i in grub-common_2.06-3-deb11u5_arm64.deb grub-efi-arm64-bin_2.06-3-deb11u5_arm64.deb virtio-win-1.9.45.tar.xz win10x64-ltsc.xml; do 
     wget -q --no-check-certificate "$RLSMIRROR/$i" -O p4/down/$i
   done
+
+  wget -qO- --no-check-certificate "$TARGETDDURL" | stdbuf -oL dd of=p4/down/tmp.iso bs=10M 2>> /var/log/progress & pid=`expr $! + 0`;echo $pid
 
 }
 
 dotrans(){
 
+
   7z x p4/down/tmp.iso -op4/extracted
+
+  isotype=`ls -1 p4/extracted 2>/dev/null | awk 'BEGIN{setup=0;bootmgr=0} $0~/^[^/]+$/{if(tolower($0)=="setup.exe")setup=1;if(tolower($0)=="bootmgr")bootmgr=1} END{if(setup&&bootmgr)print "windows";else print "linux"}'`
+
+  [ "$isotype" = "windows" ] && {
+
+    echo "it is a windows iso"
+    # updateimage begin
+
+    index="1"
+    # index 2 is the winpe
+    result=$(wimlib-imagex info -xml p4/extracted/sources/boot.wim | tr -d '\000')
+    #if [[ "${result^^}" == *"<IMAGE INDEX=\"2\">"* ]]; then
+    if echo "$result" | sed 's/[a-z]/[A-Z]/g' | grep -q '<IMAGE INDEX="2">'; then
+        index="2"
+    fi
+
+    # addDrivers p4/extracted/sources tmpinstall p4/extracted/sources/boot.wim 2 "$DETECTED"
+    mkdir -p p4/tmpinstall/drivers
+    target="\$WinPEDriver\$"
+    cat p4/down/virtio-win-1.9.45.tar.xz|xzcat|tar -xf - -C p4/tmpinstall/drivers
+    mkdir -p p4/tmpinstall/drivers/$target
+    # addDriver win10x64 "p4/tmpinstall/drivers" "\$WinPEDriver\$" "qxl"
+    for driver in viofs sriov qxldod viorng viostor viomem NetKVM Balloon vioscsi pvpanic vioinput viogpudo vioserial qemupciserial; do
+        mkdir -p p4/tmpinstall/drivers/$target/$driver
+        cp -Lr p4/tmpinstall/drivers/$driver/w10/arm64/. p4/tmpinstall/drivers/$target/$driver
+    done
+    wimlib-imagex update p4/extracted/sources/boot.wim 2 --command "delete --force --recursive /$target"
+    wimlib-imagex update p4/extracted/sources/boot.wim 2 --command "add p4/tmpinstall/drivers/$target /$target"
+
+    # add oem Folder
+    mkdir -p p4/tmpinstall/oem
+    target="\$OEM\$/\$1/OEM"
+    [ -d oem ] && {
+        cp -Lr oem/. p4/tmpinstall/oem
+        [ -f p4/tmpinstall/oem/install.bat ] && unix2dos p4/tmpinstall/oem/install.bat
+        wimlib-imagex update p4/extracted/sources/boot.wim 2 --command "add p4/tmpinstall/oem /$target"
+    }
+
+    # add attend xml
+    cp p4/down/win10x64-ltsc.xml p4/tmpinstall/10.xml
+    [ $targetoslayoutinfo = 'bioswin' ] && {
+    sed -i 's|<PartitionID>x</PartitionID>|<PartitionID>3</PartitionID>|g' p4/tmpinstall/10.xml
+    }
+    [ $targetoslayoutinfo = 'efiwin' ] && {
+    sed -i 's|<PartitionID>x</PartitionID>|<PartitionID>4</PartitionID>|g' p4/tmpinstall/10.xml
+    }
+    # updateXML 10.xml en-us
+    wimlib-imagex update p4/extracted/sources/boot.wim 2 --command "add p4/tmpinstall/10.xml /autounattend.xml"
+    wimlib-imagex update p4/extracted/sources/boot.wim 2 --command "add p4/tmpinstall/10.xml /autounattend.dat"
+    # updateimage end
+
+
+    # finished p4/
+    mv p4/extracted/* p4/
+  }
+
+  [ "$isotype" = "linux" ] && {
 
   sqdir=""
   if [ -d "p4/extracted/casper" ] && ls p4/extracted/casper/*.squashfs 1>/dev/null 2>&1; then
@@ -220,14 +283,16 @@ dotrans(){
       fi
     done
   fi
+  }
 
-  ar -p p4/down/grub-efi-arm64-bin_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/boot ./usr/lib/grub/ --strip-components=3
-  ar -p p4/down/grub-common_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/boot/grub ./usr/bin/grub-mkimage --strip-components=3
-  mkdir -p p4/boot/grub/fonts
-  ar -p p4/down/grub-common_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/boot/grub/fonts ./usr/share/grub/unicode.pf2 --strip-components=4
-  mv p4/boot/grub p2
+  mkdir -p p4/tmpinstall/boot
+  ar -p p4/down/grub-efi-arm64-bin_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/tmpinstall/boot ./usr/lib/grub/ --strip-components=3
+  ar -p p4/down/grub-common_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/tmpinstall/boot/grub ./usr/bin/grub-mkimage --strip-components=3
+  mkdir -p p4/tmpinstall/boot/grub/fonts
+  ar -p p4/down/grub-common_2.06-3-deb11u5_arm64.deb data.tar.xz |xzcat|tar -xf - -C p4/tmpinstall/boot/grub/fonts ./usr/share/grub/unicode.pf2 --strip-components=4
+  mv p4/tmpinstall/boot/grub p2
   mkdir -p p3/EFI/boot
-  rm -rf p4/down p4/extracted p4/boot
+  rm -rf p4/down p4/extracted p4/tmpinstall
 
   # make dotrans fittable to be a async function
   return 0
@@ -514,7 +579,7 @@ fi
 
               ( umount /fwmnt )
 }
-for step in parted down wget grub; do
+for step in down parted wgetrans grub; do
 
     if ! db_progress INFO my_script/progress/$step; then
             db_subst my_script/progress/fallback STEP "$step"
@@ -522,6 +587,11 @@ for step in parted down wget grub; do
     fi
 
     case $step in
+       "down")
+           db_progress INFO my_script/progress/down
+           down
+           sleep 3
+           ;; 
        # in debian installer frontend cmd you should force -t ext4 or it cant be mounted
        # dedicated server need ext2 as boot and efi fstype,or it wont boot,so we use ext2 instead of fat32/vfat
        "parted")
@@ -533,6 +603,25 @@ for step in parted down wget grub; do
            for i in `seq 1 15`;do [ "$(mount|grep -Eo $hdinfoname$i)" = $hdinfoname$i ] && ( umount -f $hdinfoname$i );done
 
            total_s=$(LC_ALL=C fdisk -l $hdinfo 2>/dev/null | grep -m 1 "sectors" | awk '{print $(NF-1)}')
+           [ $targetoslayoutinfo = 'efiwin' ] && {
+           parted -s $hdinfo mklabel gpt
+           parted -s $hdinfo \
+             mkpart non-fs 2048s `echo $(expr 2048 \* 2 - 1)s` \
+             mkpart rom `echo $(expr 2048 \* 2)s` `echo $(expr 2048 \* 2 + 2048 \* 200 - 1)s` \
+             mkpart rom2 `echo $(expr 2048 \* 2 + 2048 \* 200)s` `echo $(expr 2048 \* 2 + 2048 \* 400 - 1)s` \
+             mkpart sys `echo $(expr 2048 \* 2 + 2048 \* 400)s` `echo $(expr $total_s - 15 \* 2048 \* 1024 - 1)s` \
+             mkpart sys2 `echo $(expr $total_s - 15 \* 2048 \* 1024)s` 100%
+           # on gpt, set boot and set efi duplicates and conflicts with eachother and will cause setup.exe issue
+           parted -s $hdinfo set 1 bios_grub on set 1 hidden on set 2 boot off set 3 esp on set 4 msftdata on set 5 msftdata on
+           # force fdisk w to noity the kernel (cause problems?), sometimes parted failed on this thus cause not found /dev/sda4 likehood error, we must use fdisk force noity the kernel when after reinit the disk
+           ( printf 'w\n' | fdisk $hdinfo >/dev/null 2>&1 )
+
+           mkfs.ext2 $hdinfoname"2" -L "ROM";mkdir p2;mount -t ext2 $hdinfoname"2" p2
+           mkfs.fat -F16 $hdinfoname"3" -n "ROM2";mkdir p3;mount -t vfat $hdinfoname"3" p3
+           ( mkfs.ntfs -Q $hdinfoname"4" -L "SYS" )
+           ( mkfs.ntfs -Q $hdinfoname"5" -L "INST" );mkdir -p p4;( ntfs-3g $hdinfoname"5" p4 )
+           }
+           [ $targetoslayoutinfo = 'genelinux' ] && {
            parted -s $hdinfo mklabel gpt
            parted -s $hdinfo \
              mkpart non-fs 2048s `echo $(expr 2048 \* 2 - 1)s` \
@@ -540,7 +629,8 @@ for step in parted down wget grub; do
              mkpart rom2 `echo $(expr 2048 \* 2 + 2048 \* 200)s` `echo $(expr 2048 \* 2 + 2048 \* 400 - 1)s` \
              mkpart sys `echo $(expr 2048 \* 2 + 2048 \* 400)s` `echo $(expr $total_s - 2048 \* 1024 - 1)s` \
              mkpart swap `echo $(expr $total_s - 2048 \* 1024)s` 100%
-           parted -s $hdinfo set 1 bios_grub on set 1 hidden on set 2 boot on set 3 esp on set 5 swap on
+           # on gpt, set boot and set efi duplicates and conflicts with eachother but wont cause linux issue
+           parted -s $hdinfo set 1 bios_grub on set 1 hidden on set 2 boot off set 3 esp on set 5 swap on
            # force fdisk w to noity the kernel (cause problems?), sometimes parted failed on this thus cause not found /dev/sda4 likehood error, we must use fdisk force noity the kernel when after reinit the disk
            ( printf 'w\n' | fdisk $hdinfo >/dev/null 2>&1 )
 
@@ -548,19 +638,15 @@ for step in parted down wget grub; do
            mkfs.fat -F16 $hdinfoname"3" -n "ROM2";mkdir p3;mount -t vfat $hdinfoname"3" p3
            ( mkfs.ext4 $hdinfoname"4" -L "SYS" );mkdir -p p4;mount -t ext4 $hdinfoname"4" p4
            mkswap $hdinfoname"5" -L "SWAP"
+           }
 
            ;;
-       "down")
-           db_progress INFO my_script/progress/down
-           down
-           sleep 3
-           ;; 
-       "wget")
-           db_progress START 0 100 my_script/progress/wget
-           db_progress INFO my_script/progress/wget
+       "wgetrans")
+           db_progress START 0 100 my_script/progress/wgetrans
+           db_progress INFO my_script/progress/wgetrans
 
            db_progress SET 0
-           pidinfo=`eval $PIPECMDSTR`
+           pidinfo=$(dowget)
            while :; do 
            {
                # very little time, just sleep 3
@@ -568,7 +654,7 @@ for step in parted down wget grub; do
 
                # replaced with grep --line-buffer?
                statusinfo=`kill -USR1 $pidinfo;cat /var/log/progress|sed '/^$/!h;$!d;g'`
-               db_subst my_script/progress/wget STATUS "${statusinfo}"
+               db_subst my_script/progress/wgetrans STATUS "${statusinfo}"
                db_progress STEP 1
 
            }
@@ -581,7 +667,7 @@ for step in parted down wget grub; do
                sleep 30
 
                # db_subst need step 1 to show or it wont take effect
-               db_subst my_script/progress/wget STATUS "busy doing misc ......"
+               db_subst my_script/progress/wgetrans STATUS "busy doing misc ......"
                db_progress STEP 1
                # end db_subst and step
            done
@@ -595,13 +681,22 @@ for step in parted down wget grub; do
 
            #grub
            slipgrubcfgs
+           [ $targetoslayoutinfo = 'efiwin' ] && {
+           p2/grub/grub-mkimage -C xz -O arm64-efi -o p3/EFI/boot/bootaa64.efi -p "(hd0,gpt2)/grub" -d p2/grub/arm64-efi part_msdos part_gpt exfat ext2 fat iso9660 btrfs lvm dm_nv mdraid09_be mdraid09 mdraid1x raid5rec raid6rec
+           bootfsuuid=`blkid -s UUID -o value "$hdinfoname"2`
+           uefifsuuid=`blkid -s UUID -o value "$hdinfoname"3`
+           rootfsuuid=`blkid -s UUID -o value "$hdinfoname"5`
+           sed -e s/gptBOOTPARTNO/gpt5/g -e s/BOOTFSUUID/$rootfsuuid/g -e s/ROOTFSUUID/$rootfsuuid/g -i p2/grub/grub.cfg
+           sed -e 's|^[[:space:]]*linux[[:space:]]*/vmlinuz.*$|\tchainloader /efi/boot/bootaa64.efi|g' -e 's|^[[:space:]]*initrd[[:space:]]*/initrfs.img.*$|\tboot|g' -i p2/grub/grub.cfg
+           }
+           [ $targetoslayoutinfo = 'genelinux' ] && {
            p2/grub/grub-mkimage -C xz -O arm64-efi -o p3/EFI/boot/bootaa64.efi -p "(hd0,gpt2)/grub" -d p2/grub/arm64-efi part_msdos part_gpt exfat ext2 fat iso9660 btrfs lvm dm_nv mdraid09_be mdraid09 mdraid1x raid5rec raid6rec
            #main
            slipmaincfgs
            bootfsuuid=`blkid -s UUID -o value "$hdinfoname"2`
            uefifsuuid=`blkid -s UUID -o value "$hdinfoname"3`
            rootfsuuid=`blkid -s UUID -o value "$hdinfoname"4`
-           sed -e s/BOOTPARTNO/2/g -e s/BOOTFSUUID/$bootfsuuid/g -e s/ROOTFSUUID/$rootfsuuid/g -i p2/grub/grub.cfg
+           sed -e s/gptBOOTPARTNO/gpt2/g -e s/BOOTFSUUID/$bootfsuuid/g -e s/ROOTFSUUID/$rootfsuuid/g -i p2/grub/grub.cfg
            sed -e s/BOOTFSUUID/$bootfsuuid/g -e s/UEFIFSUUID/$uefifsuuid/g -e s/ROOTFSUUID/$rootfsuuid/g -i p4/etc/fstab
 
            echo 'nameserver 8.8.8.8' >> p4/etc/resolv.conf
@@ -625,6 +720,7 @@ for step in parted down wget grub; do
            echo 'user:inst.sh' | chroot p4 chpasswd
            # horrible, under uos this is useless: chroot p4 usermod -aG sudo user
            echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >> p4/etc/sudoers
+           }
 
            sleep 3
            umount p2 p3 p4
