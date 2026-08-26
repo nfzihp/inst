@@ -16,7 +16,7 @@ inst是一套可在线一键安装os的脚本/面板和应用商店，及一套�
 演示与特性✨
 -----
 
-inst.sh支持linux/windows/osx三平台,支持多provision引擎和目标(remote mirror/iso/dmg/gz/xz/qcow2,localfile,docker oci,pve lxc app,未来还将支持安装superbase serverless app/colinux app/gobolinux app ...),支持双架构amd,arm双启动uefi,bios双网栈ipv4,ipv6，支持自建源,支持多种在线安装方式(nativedi,wgetdd,liveuntar,nc restore,inplace dd)及丰富的可调试信息，支持正常模式支持救援模式，双进度显示(vnc,web)，支持自扩硬盘和智能嵌入静态ip参数(包括/32这样的特殊掩码支持)，无最小内存限制，支持免d坏模式，可达成90%的linux成功率,80%的other os成功率，支持包括az,servarica,oracle/oracle arm,ksle,bwg10g512m,及接入无限丰富的机型和厂商。  
+inst.sh支持linux/windows/osx三平台,支持多provision引擎和目标(remote mirror/iso/dmg/raw/gz/xz/zstd/qcow2,localfile,docker oci,pve lxc app,未来还将支持安装superbase serverless app/colinux app/gobolinux app ...),支持双架构amd,arm双启动uefi,bios双网栈ipv4,ipv6，支持自建源,支持多种在线安装方式(nativedi,wgetdd,liveuntar,nc restore,inplace dd)及丰富的可调试信息，支持正常模式支持救援模式，双进度显示(vnc,web)，支持自扩硬盘和智能嵌入静态ip参数(包括/32这样的特殊掩码支持)，无最小内存限制，支持免d坏模式，可达成90%的linux成功率,80%的other os成功率，支持包括az,servarica,oracle/oracle arm,ksle,bwg10g512m,及接入无限丰富的机型和厂商。  
 
 ![](https://raw.githubusercontent.com/minlearn/inst/master/_build/www/assets/inst.png)
 
@@ -45,24 +45,24 @@ curl -sSL inst.sh|bash -s - -t 目标值
 ```
 curl -sSL inst.sh|bash -s - -选项名 选项值           -t 目标值
 
-     　　　　　             ┌───────────────────────────────────────────────┐
-   * 指定脚本源和包源:       │ -m github/gitea,ustc │ -t debian/debianxx     │ * debian为源安装的debian各版,xx为10-12默认11,配合源参数使用更好     
-   * 指定网卡名:            │ -i enp0s1...         │    iso/dmg/gz/xz/qcow2 │ * iso为光盘镜像链接,dmg为苹果安装镜像,gz/xz/qcow2是各硬盘镜像链接     
-   * 指定静态网:            │ -n ip/cidr,gateway   │    dummy               │ * dummy是空目标仅供调试模式用   
-   * 指定硬盘名:            │ -p sda/sda,noid...   │    ./xxx.gz            │ * ./xxx.gz是本地dd文件名    
-   * 指定网络栈:            │ -6 1                 │    10000:/dev/sda      │ * 10000:/dev/sda是nc打包导出地址       
-   * 指定调试中:            │ -d ...:...           │    appname ...         │ * appname是要直接安装的app名,配合源参数使用更好     
-       注入穿透件:          │    22:ratholesrvip   │    docker ...          │ * docker是oci容器,如redriod     
-       改进度端口:          │    vnc:8000          │    devdesk             │ * embeded pve with lxc         
-   * 指定完成后:            │ -o ...:...           │    devdesklv/ct/de     │ * pvelive/pveovz/pveqemu(dreprecated)    
-       指定一密码:          │    pass:xx           │                        │ 
-       需扩展磁盘:          │    1:doexpanddisk    │                        │
-       不注入网络:          │    2:noinjectnetcfg  │                        │
-       保持不重启:          │    3:noreboot        │                        │
-       不预先清除:          │    4:nopreclean      │                        │ 
-       注入穿透件:          │    3389:ratholesrvip │                        │ 
-   * 自定完成串:            │ -o 'str-in-a-line..' │                        │
-     　　　　　             └───────────────────────────────────────────────┘                                             
+     　　　　　             ┌────────────────────────────────────────────────┐
+   * 指定脚本源和包源:       │ -m github/gitea,ustc │ -t debian/debianxx      │ * debian为源安装的debian各版,xx为10-12默认11,配合源参数使用更好     
+   * 指定网卡名:            │ -i enp0s1...         │    iso/dmg              │ * iso为光盘镜像链接,dmg为苹果安装镜像     
+   * 指定静态网:            │ -n ip/cidr,gateway   │    raw/gz/xz/zstd/qcow2 │ * raw/gz/xz/qcow2是各硬盘镜像链接     
+   * 指定硬盘名:            │ -p sda/sda,noid...   │    ./xxx.gz             │ * ./xxx.gz是本地dd文件名    
+   * 指定网络栈:            │ -6 1                 │    10000:/dev/sda       │ * 10000:/dev/sda是nc打包导出地址       
+   * 指定调试中:            │ -d ...:...           │    dummy                │ * dummy是空目标仅供调试模式用   
+       注入穿透件:          │    22:ratholesrvip   │    devdesk              │ * embeded pve with lxc         
+       改进度端口:          │    vnc:8000          │    devdesklv/ct/de      │ * pvelive/pveovz/pveqemu(dreprecated)    
+   * 指定完成后:            │ -o ...:...           │    appname ...          │ * appname是要直接安装的devdeskos app名,配合源参数使用更好     
+       指定一密码:          │    pass:xx           │    docker ...           │ * docker是oci容器,如redriod     
+       需扩展磁盘:          │    1:doexpanddisk    │                         │
+       不注入网络:          │    2:noinjectnetcfg  │                         │
+       保持不重启:          │    3:noreboot        │                         │
+       不预先清除:          │    4:nopreclean      │                         │ 
+       注入穿透件:          │    3389:ratholesrvip │                         │ 
+   * 自定完成串:            │ -o 'str-in-a-line..' │                         │
+     　　　　　             └────────────────────────────────────────────────┘                                             
                             * 以上都可选(-o可多组合)   * -t必须指定，且值唯一
 ```
 

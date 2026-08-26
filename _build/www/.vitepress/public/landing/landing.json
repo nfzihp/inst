@@ -4,7 +4,7 @@
     "subtitle": "lifelong linux and onekeystoke netinstall script/panel/appstore",
     "ctas": [
       { "text": "开始使用", "link": "https://p.inst.sh", "primary": true },
-      { "text": "脚本库", "link": "/scripts", "primary": false }
+      { "text": "更多文档", "link": "/docs", "primary": false }
     ],
     "image": "https://raw.githubusercontent.com/minlearn/inst/master/_build/www/assets/instcf.png"
   },

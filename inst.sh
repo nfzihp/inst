@@ -392,7 +392,7 @@ function CheckTargeturl(){
       [[ "$IMGTYPECHECKPASS_DRTREF" == 'qcow2' ]] && UNZIP='4' && sleep 3 && echo -en "[ \033[32m qcow2 \033[0m ]";
       [[ "$IMGTYPECHECKPASS_DRTREF" == '' || "$UNZIP" == '' ]] && {
         # begin pass2:simply check ext
-        EXTCHECKPASS="$([[ $1 =~ '.' ]] && echo ${1##*.})"
+        EXTCHECKPASS="$({ u="${1%_[0-9][0-9][0-9]}"; echo "${u##*.}"; })"
         [[ "$EXTCHECKPASS" == '' ]] && { UNZIP='0' && sleep 3 && echo -en "[ \033[32m noext \033[0m ]"; } || { [[ "$EXTCHECKPASS" == 'raw' ]] && UNZIP='0' && sleep 3 && echo -en "[ \033[32m raw \033[0m ]";[[ "$EXTCHECKPASS" == 'iso' ]] && UNZIP='0' && sleep 3 && echo -en "[ \033[32m iso \033[0m ]";[[ "$EXTCHECKPASS" == 'dmg' ]] && UNZIP='0' && sleep 3 && echo -en "[ \033[32m dmg \033[0m ]";[[ "$EXTCHECKPASS" == 'gz' || "$EXTCHECKPASS" == 'gzip' ]] && UNZIP='1' && sleep 3 && echo -en "[ \033[32m gzip \033[0m ]";[[ "$EXTCHECKPASS" == 'xz' ]] && UNZIP='2' && sleep 3 && echo -en "[ \033[32m xz \033[0m ]";[[ "$EXTCHECKPASS" == 'zstd' ]] && UNZIP='3' && sleep 3 && echo -en "[ \033[32m zstd \033[0m ]";[[ "$EXTCHECKPASS" == 'qcow2' || "$EXTCHECKPASS" == 'img' ]] && UNZIP='4' && sleep 3 && echo -en "[ \033[32m qcow2 \033[0m ]"; }
       }
       #after 2 passe,no need to check IMGTYPECHECKPASS_DRTREF anymore
@@ -1078,7 +1078,7 @@ processgrub(){
   patchsdir="$REPOMIRROR"/_build/apps/xxx$([ "$tmpHOSTARCH" == '1' -a "$tmpHOSTARCH" != '' ]  && echo -n _arm64)
   kerneldir="$REPOMIRROR"/_build/debianbase/dists/bullseye/main-debian-installer/$([ "$tmpHOSTARCH" == '1' -a "$tmpHOSTARCH" != '' ]  && echo -n binary-arm64 || echo -n binary-amd64)/tarball
 
-  [[ "$tmpDEBUG" == "2" ]] && [[ "$tmpTARGETMODE" == '0' ]] && [[ "$tmpTARGET" != debian* && "$tmpTARGET" != devdeskos* && "$tmpTARGET" != dummy && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg ]] && {
+  [[ "$tmpDEBUG" == "2" ]] && [[ "$tmpTARGETMODE" == '0' ]] && [[ "$tmpTARGET" != debian* && "$tmpTARGET" != devdeskos* && "$tmpTARGET" != dummy && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg && "$tmpTARGET" != *.dmg_* ]] && {
     rescuecommandstring="[[ ! -f /longrunpipefgcmd.sh ]] && wget --no-check-certificate -q "${patchsdir/xxx/dipatchs-ddinstall}"/longrunpipebgcmd_redirectermoniter.sh -O /longrunpipefgcmd.sh;chmod +x /longrunpipefgcmd.sh;/longrunpipefgcmd.sh "$TARGETDDURL,$UNZIP" $([[ "$tmpBUILD" != "11" && "$tmpBUILD" != "1" ]] && { [[ "$defaulthdid" != "" ]] && echo "$defaulthdid" || echo "$defaulthd"; } || echo "nonlinux" ) $([[ "$FORCE1STNICNAME" != '' ]] && echo "$IFETHMAC" || echo "\"\$(ip route show |grep -o 'default via [0-9]\{1,3\}.[0-9]\{1,3\}.[0-9]\{1,3\}.[0-9]\{1,3\}.*' |head -n1 |sed 's/proto.*\|onlink.*//g' |awk '{print \$NF}')\"") $([[ "$FORCEINSTCTL" != '' ]] && echo "$FORCEINSTCTL") $([[ "$FORCEPASSWORD" != '' ]] && echo "$FORCEPASSWORD") $([ "$setNet" == '1' -a "$FORCENETCFGSTR" != '' ] && echo "$FIP,$FMASK,$FGATE";[ "$AutoNet" == '1' ] && [ "$IP" != '' -a "$MASK" != '' -a "$GATE" != '' ] && echo "$IP","$MASK","$GATE";[ "$AutoNet" == '2' ] && [ "$IP" != '' -a "$MASK" != '' -a "$GATE" != '' ] && echo "$IP","$MASK","$GATE","dhcp") $([ "$FORCEINSTCMD" != '' ] && printf "%s" "$FORCEINSTCMD"| while IFS= read -r -n1 char; do [[ ! "$char" =~ [a-zA-Z0-9] ]] && printf "\\\\\%04o" "'$char" || printf "%s" "$char"; done)"
 
     return
@@ -1118,7 +1118,7 @@ dipartmanearlycommandstring="$([[ "$tmpINSTWITHMANUAL" == '1' ]] && echo "wget -
   # we meant to use live-installer but it is too complicated so we turn to parted
   # there is only grub-efi on arm64,shall we separate preseed?
   # we must put force1sthdname before forcenetcfgstr,because argpositiion 1,2,3,4 is always there(fixedly appear) but 5 not(if not forced,it dont occpy a pos),we pust fixed ones piorr in front
-  [[ "$tmpTARGETMODE" == '0' && ( "$tmpTARGET" == *.iso || "$tmpTARGET" == *.dmg ) ]] && { # tee -a $topdir/$remasteringdir/initramfs/preseed.cfg $topdir/$remasteringdir/initramfs_arm64/preseed.cfg > /dev/null <<EOF
+  [[ "$tmpTARGETMODE" == '0' && ( "$tmpTARGET" == *.iso || ( "$tmpTARGET" == *.dmg || "$tmpTARGET" == *.dmg_* ) ) ]] && { # tee -a $topdir/$remasteringdir/initramfs/preseed.cfg $topdir/$remasteringdir/initramfs_arm64/preseed.cfg > /dev/null <<EOF
 # must not place anna-install network-console here in preseed/early_command but instead in partman/early_command
 # in debian installer, some machine dhcp mode are not clever enough, so just force autonet 1 and 2 both static
 dipreseedearlycommandstring="$([[ "$tmpINSTWITHMANUAL" == '1' ]] && echo "screen -dmS reboot /sbin/reboot -d 300;" )screen -dmS vnc /bin/linuxvnc -t 1 -p $([[ "$tmpINSTVNCPORT" != '' ]] && echo "$tmpINSTVNCPORT" || echo "80" );screen -dmS diweb /usr/bin/perl /usr/share/debconf/diweb --port 8080"
@@ -1135,7 +1135,7 @@ dipartmanearlycommandstring="$([[ "$tmpINSTWITHMANUAL" == '1' ]] && echo "wget -
 
 
   # we must put force1sthdname before forcenetcfgstr,because argpositiion 1,2,3,4,5 is always there(fixedly appear) but 6 not(if not forced,it dont occpy a pos),we pust fixed ones piorr in front
-  [[ "$tmpTARGETMODE" == '0' ]] && [[ "$tmpTARGET" != debian* && "$tmpTARGET" != devdeskos* && "$tmpTARGET" != dummy && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg ]] && { # tee -a $topdir/$remasteringdir/initramfs/preseed.cfg $topdir/$remasteringdir/initramfs_arm64/preseed.cfg > /dev/null <<EOF
+  [[ "$tmpTARGETMODE" == '0' ]] && [[ "$tmpTARGET" != debian* && "$tmpTARGET" != devdeskos* && "$tmpTARGET" != dummy && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg && "$tmpTARGET" != *.dmg_* ]] && { # tee -a $topdir/$remasteringdir/initramfs/preseed.cfg $topdir/$remasteringdir/initramfs_arm64/preseed.cfg > /dev/null <<EOF
 # anna-install wget-udeb here?
 # must not place anna-install network-console here in preseed/early_command but instead in partman/early_command
 # in debian installer, some machine dhcp mode are not clever enough, so just force autonet 1 and 2 both static
@@ -2544,10 +2544,10 @@ case $tmpTARGET in
   /*|./*|*) [[ "$tmpTARGETMODE" == '5' ]] && { ABSOLUTE_PATH=$(readlink -f "$tmpTARGET");DIR_NAME=$(dirname "$ABSOLUTE_PATH");MOUNT_POINT=$(df "$tmpTARGET" | grep -v Filesystem | awk '{print $6}');[ -z "$MOUNT_POINT" ] && exit;TARGETDDURL=${DIR_NAME#$MOUNT_POINT};UNZIP="$([[ ${tmpTARGET##*.} == 'gz' ]] && echo 1;[[ ${tmpTARGET##*.} == 'xz' ]] && echo 2)"; }
     [[ "$tmpTARGETMODE" == '0' && "$tmpTARGET" == *.iso ]] && { BYDRVHINT=default; BYBOOTHINT=default; case "$tmpTARGET" in *windows_10*) BYOSHINT=win10;; *windows_11*) BYOSHINT=win11;; *windows_server_2008_r2*) BYOSHINT=win2k8R2;; *windows_server_2008*) BYOSHINT=win2k8;; *windows_server_2012_r2*) BYOSHINT=win2k12R2;; *windows_server_2012*) BYOSHINT=win2k12;; *windows_server_2016*) BYOSHINT=win2k16;; *windows_server_2019*) BYOSHINT=win2k19;; *windows_server_2022*) BYOSHINT=win2k22;; *windows_server_2025*) BYOSHINT=win2k25;; *win*) echo "Error: not a offical windows iso str"; exit 1;; esac; }
     [[ "$tmpTARGETMODE" == '0' && "$tmpTARGET" == *.iso ]] && TARGETDDURL=$tmpTARGET && CheckTargeturl $TARGETDDURL
-    [[ "$tmpTARGETMODE" == '0' && "$tmpTARGET" == *.dmg ]] && { BYDRVHINT=default; BYBOOTHINT=default; BYOSHINT=osx12; }
-    [[ "$tmpTARGETMODE" == '0' && "$tmpTARGET" == *.dmg ]] && TARGETDDURL=$tmpTARGET && CheckTargeturl $TARGETDDURL
+    [[ "$tmpTARGETMODE" == '0' && ( "$tmpTARGET" == *.dmg || "$tmpTARGET" == *.dmg_* ) ]] && { BYDRVHINT=default; BYBOOTHINT=default; BYOSHINT=osx12; }
+    [[ "$tmpTARGETMODE" == '0' && ( "$tmpTARGET" == *.dmg || "$tmpTARGET" == *.dmg_* ) ]] && TARGETDDURL=$tmpTARGET && CheckTargeturl $([[ "${TARGETDDURL%%":https://"*}" != "$TARGETDDURL" ]] && echo "${TARGETDDURL%%":https://"*}" || echo "${TARGETDDURL%%":http://"*}")
     # wedont check "$tmpTARGETMODE" == '1,2,5'
-    [[ "$tmpTARGETMODE" != '1' && "$tmpTARGETMODE" != '2' && "$tmpTARGETMODE" != '5' && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg ]] && TARGETDDURL=$tmpTARGET && CheckTargeturl $TARGETDDURL ;;
+    [[ "$tmpTARGETMODE" != '1' && "$tmpTARGETMODE" != '2' && "$tmpTARGETMODE" != '5' && "$tmpTARGET" != *.iso && "$tmpTARGET" != *.dmg && "$tmpTARGET" != *.dmg_* ]] && TARGETDDURL=$tmpTARGET && CheckTargeturl $TARGETDDURL ;;
 esac
 
 sleep 2
